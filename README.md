@@ -42,6 +42,7 @@ docker compose down -v --remove-orphans
 - 所有状态变化使用乐观锁并写入审计日志；审计查询仅 reviewer/admin 可见。
 - 优先级决定的每次创建、草稿更新和定稿均追加不可变版本，保留证据、状态、操作者、request ID 和完整快照。
 - 优先级只能由不同于拟制人的 reviewer/admin 定稿；observe/restrict/urgent 均为不可覆盖终态。
+- 复核员待复核队列 `GET /api/priority-review-queue`：仅 reviewer/admin 可调，自动排除本人拟制草稿，按风险等级 → 指标值 → 等待时长（均为高/久者优先）排序，返回建议等级、等待小时和逐条排序原因，并支持 `?suggestedLevel=observe|restrict|urgent` 筛选；空队列返回明确原因。原列表 `/api/priorities` 与审计接口保持不变。
 - 请求 ID、结构化日志、全局错误映射和 Redis 分布式限流。
 - 提供脱敏运行配置、当前会话、审计汇总和单实体审计历史接口。
 - 业务工作台支持查询、新建、状态推进、风险标识及操作审计查看。
@@ -124,6 +125,9 @@ cd .. && docker compose config --quiet
 |---|---|---|
 | `DefectState` | `new, verified, monitoring, mitigated, closed` | `backend/internal/constants/status.go`、`frontend/src/types/status.ts` |
 | `PriorityLevel` | `observe, restrict, urgent` | `backend/internal/constants/status.go`、`frontend/src/types/status.ts` |
+| 风险等级 | `low, medium, high, critical` | DTO 校验 `backend/internal/dto/priority_decision.go`、风险序与建议等级映射 `backend/internal/constants/status.go`、前端 `SeverityBadge.vue` |
+
+待复核队列按 `RiskRank`（low&lt;medium&lt;high&lt;critical）排序，并通过 `RiskToSuggestedLevel`/`SuggestedLevelForRisk` 给出建议等级（low/medium→observe、high→restrict、critical→urgent）。
 
 每个实体自己的完整迁移图同样位于 `backend/internal/constants/status.go`；页面使用的状态列表位于 `frontend/src/types/status.ts`。修改状态时必须同步两处并更新对应服务测试。
 

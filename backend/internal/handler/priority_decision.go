@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
+	"github.com/blueship581/railway-bridge-defect-priority/backend/internal/constants"
 	"github.com/blueship581/railway-bridge-defect-priority/backend/internal/dto"
 	"github.com/blueship581/railway-bridge-defect-priority/backend/internal/middleware"
 	"github.com/blueship581/railway-bridge-defect-priority/backend/internal/model"
@@ -27,6 +29,30 @@ func (h *PriorityDecisionHandler) Register(group *gin.RouterGroup) {
 	resource.PUT("/:id", middleware.RequireMinimumRole(model.RoleOperator), h.update)
 	resource.POST("/:id/transition", middleware.RequireMinimumRole(model.RoleOperator), h.transition)
 	resource.DELETE("/:id", middleware.RequireRoles(model.RoleAdmin), h.remove)
+	// The review queue lives outside /priorities/:id because Gin cannot register
+	// a static segment (/review-queue) alongside the same-level :id parameter.
+	group.GET("/priority-review-queue", middleware.RequireMinimumRole(model.RoleReviewer), h.reviewQueue)
+}
+
+// reviewQueue returns the triage queue for reviewers and above. The RBAC
+// middleware enforces the role; the service enforces separation of duties by
+// excluding drafts prepared by the caller.
+func (h *PriorityDecisionHandler) reviewQueue(c *gin.Context) {
+	var query dto.ReviewQueueQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		util.Fail(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	if level := strings.TrimSpace(query.SuggestedLevel); level != "" && !constants.IsPriorityLevel(level) {
+		util.Fail(c, http.StatusBadRequest, "invalid_suggested_level", "suggestedLevel must be one of observe/restrict/urgent")
+		return
+	}
+	queue, err := h.service.ReviewQueue(c.Request.Context(), actorFromContext(c), query.SuggestedLevel)
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	util.OK(c, queue)
 }
 
 func (h *PriorityDecisionHandler) list(c *gin.Context) {
