@@ -43,3 +43,36 @@ export interface AuditLog {
   entityId: number; beforeState: string; afterState: string; detail: string; createdAt: string;
 }
 export interface EntityConfig { key: string; path: string; label: string; statuses: readonly string[] }
+
+export interface PriorityReviewItem {
+  id: number;
+  code: string;
+  name: string;
+  facility: string;
+  owner: string;
+  category: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  riskRank: number;
+  metricValue: number;
+  metricUnit: string;
+  relatedCode: string;
+  preparedBy: string;
+  version: number;
+  updatedAt: string;
+  suggestedLevel: PrioritySuggestedLevel;
+  waitingHours: number;
+  rank: number;
+  sortReason: string;
+}
+
+export type PrioritySuggestedLevel = 'observe' | 'restrict' | 'urgent';
+
+export interface PriorityReviewQueue {
+  items: PriorityReviewItem[];
+  filter?: string;
+  totalDrafts: number;
+  excludedOwnCount: number;
+  queueCount: number;
+  filteredCount: number;
+  emptyReason?: string;
+}

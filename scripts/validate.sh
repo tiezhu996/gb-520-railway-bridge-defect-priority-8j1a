@@ -71,6 +71,43 @@ self_id=$(printf '%s' "$self_created" | jq -er '.data.id')
 self_final_status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:${BACKEND_PORT}/api/priorities/$self_id/transition" -H "Authorization: Bearer $reviewer_token" -H 'Content-Type: application/json' -d '{"status":"observe","expectedVersion":1,"reason":"不得自行复核自己的决定"}')
 [ "$self_final_status" = "422" ]
 
+# 待复核队列：RBAC（仅 reviewer/admin）、建议等级/等待小时/排序原因、本人拟制排除、风险→指标→等待时长排序
+viewer_queue_status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/priorities/review-queue" -H "Authorization: Bearer $viewer_token")
+[ "$viewer_queue_status" = "403" ]
+operator_queue_status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/priorities/review-queue" -H "Authorization: Bearer $operator_token")
+[ "$operator_queue_status" = "403" ]
+
+mk_queue_draft() {
+	qcode="$1"; qrisk="$2"; qmetric="$3"
+	qpayload=$(jq -n --arg code "$qcode" --arg now "$now" --arg risk "$qrisk" --argjson metric "$qmetric" \
+		'{code:$code,name:"队列排序验证",description:"队列排序",facility:"K42 桥梁作业区",owner:"现场处置组",category:"结构缺陷",riskLevel:$risk,metricValue:$metric,metricUnit:"score",effectiveAt:$now,evidence:"队列排序证据",relatedCode:"DF-001"}')
+	curl -fsS -X POST "http://127.0.0.1:${BACKEND_PORT}/api/priorities" -H "Authorization: Bearer $operator_token" -H 'Content-Type: application/json' -d "$qpayload" >/dev/null
+}
+mk_queue_draft "PD-RQH-$(date +%s)" high 80
+mk_queue_draft "PD-RQM-$(date +%s)" high 30
+mk_queue_draft "PD-RQL-$(date +%s)" medium 50
+
+reviewer_queue=$(curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/priorities/review-queue" -H "Authorization: Bearer $reviewer_token")
+printf '%s' "$reviewer_queue" | jq -e '
+	(.data.items | type == "array") and
+	(.data.excludedOwnCount >= 1) and
+	([.data.items[] | select(.preparedBy == "reviewer")] | length == 0) and
+	(.data.items | all(.suggestedLevel != "" and .sortReason != "" and (.waitingHours | type == "number") and (.rank | type == "number")))' >/dev/null
+# 风险等级优先：critical（smoke 草稿）领先所有 high；同为 high 时指标值 80 领先 30；medium 在 high 之后
+printf '%s' "$reviewer_queue" | jq -e '
+	(.data.items[0].riskLevel == "critical") and
+	([.data.items[] | select(.code | test("^PD-RQ"))] | length == 3)' >/dev/null
+ranked_high=$(printf '%s' "$reviewer_queue" | jq -r '[.data.items[] | select(.code | test("^PD-RQ[HM]")) | .code] | join(",")')
+case "$ranked_high" in PD-RQH*,PD-RQM*) ;; *) echo "high 风险内未按指标值降序: $ranked_high" >&2; exit 1 ;; esac
+medium_index=$(printf '%s' "$reviewer_queue" | jq -r '[.data.items[].riskLevel] | map(. == "medium") | index(true) // -1')
+first_high_index=$(printf '%s' "$reviewer_queue" | jq -r '[.data.items[].riskLevel] | map(. == "high") | index(true) // 99')
+[ "$medium_index" -gt "$first_high_index" ]
+
+urgent_filtered=$(curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/priorities/review-queue?suggestedLevel=urgent" -H "Authorization: Bearer $reviewer_token")
+printf '%s' "$urgent_filtered" | jq -e '([.data.items[] | .suggestedLevel] | all(. == "urgent")) and (.data.items | length >= 1)' >/dev/null
+bad_filter_status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BACKEND_PORT}/api/priorities/review-queue?suggestedLevel=bogus" -H "Authorization: Bearer $reviewer_token")
+[ "$bad_filter_status" = "422" ]
+
 curl -fsS -X POST "http://127.0.0.1:${BACKEND_PORT}/api/priorities/$priority_id/transition" -H "Authorization: Bearer $reviewer_token" -H 'X-Request-ID: smoke-review' -H 'Content-Type: application/json' -d "$transition_payload" | jq -e '.data.status == "urgent" and .data.version == 3' >/dev/null
 curl -fsS "http://127.0.0.1:${BACKEND_PORT}/api/priorities/$priority_id" -H "Authorization: Bearer $reviewer_token" | jq -e '
 	.data.status == "urgent" and

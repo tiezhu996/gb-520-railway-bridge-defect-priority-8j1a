@@ -22,6 +22,7 @@ func NewPriorityDecisionHandler(s service.PriorityDecisionService) *PriorityDeci
 func (h *PriorityDecisionHandler) Register(group *gin.RouterGroup) {
 	resource := group.Group("/priorities")
 	resource.GET("", h.list)
+	resource.GET("/review-queue", middleware.RequireMinimumRole(model.RoleReviewer), h.reviewQueue)
 	resource.GET("/:id", h.get)
 	resource.POST("", middleware.RequireMinimumRole(model.RoleOperator), h.create)
 	resource.PUT("/:id", middleware.RequireMinimumRole(model.RoleOperator), h.update)
@@ -37,6 +38,18 @@ func (h *PriorityDecisionHandler) list(c *gin.Context) {
 		return
 	}
 	util.Page(c, result.Items, result.Page, result.PageSize, result.Total)
+}
+
+// reviewQueue serves the ranked pending-review worklist. Access is enforced at
+// the route level (reviewer or admin); each viewer's own drafts are excluded
+// inside the service.
+func (h *PriorityDecisionHandler) reviewQueue(c *gin.Context) {
+	queue, err := h.service.ReviewQueue(c.Request.Context(), actorFromContext(c), c.Query("suggestedLevel"))
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	util.OK(c, queue)
 }
 
 func (h *PriorityDecisionHandler) get(c *gin.Context) {

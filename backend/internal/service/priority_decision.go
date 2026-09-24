@@ -21,6 +21,7 @@ type PriorityDecisionService interface {
 	Transition(context.Context, uint, dto.TransitionRequest, string, string, string) (model.PriorityDecision, error)
 	Delete(context.Context, uint, string, string) error
 	StatusCounts(context.Context) (map[string]int64, error)
+	ReviewQueue(context.Context, string, string) (PriorityReviewQueue, error)
 }
 
 type priorityDecisionService struct {

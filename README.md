@@ -42,6 +42,7 @@ docker compose down -v --remove-orphans
 - 所有状态变化使用乐观锁并写入审计日志；审计查询仅 reviewer/admin 可见。
 - 优先级决定的每次创建、草稿更新和定稿均追加不可变版本，保留证据、状态、操作者、request ID 和完整快照。
 - 优先级只能由不同于拟制人的 reviewer/admin 定稿；observe/restrict/urgent 均为不可覆盖终态。
+- `/api/priorities/review-queue` 为复核员及以上提供待复核队列：仅包含他人拟制的 draft 草稿，按风险等级（low&lt;medium&lt;high&lt;critical）→指标值→等待小时降序排列，返回建议等级（observe/restrict/urgent）、等待小时、顺位和排序原因，支持 `suggestedLevel` 筛选；本人拟制草稿不进队列，空队列返回具体原因。原 `/api/priorities` 列表与审计接口不变。
 - 请求 ID、结构化日志、全局错误映射和 Redis 分布式限流。
 - 提供脱敏运行配置、当前会话、审计汇总和单实体审计历史接口。
 - 业务工作台支持查询、新建、状态推进、风险标识及操作审计查看。

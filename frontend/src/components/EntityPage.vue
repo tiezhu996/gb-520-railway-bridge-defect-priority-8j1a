@@ -55,6 +55,7 @@ async function confirmTransition() {
 			<div><p class="eyebrow">业务工作台</p><h1>{{ config.label }}</h1><p>统一管理{{ config.label }}的状态、风险、证据与责任人。</p></div>
 			<el-button v-if="canWrite" type="primary" @click="showCreate = true">新增{{ config.label }}</el-button>
 		</header>
+		<slot name="intro"/>
 		<section class="metrics">
 			<MetricCard label="记录总数" :value="store.meta.total" detail="当前筛选范围"/>
 			<MetricCard label="高风险" :value="highRisk" detail="需要优先复核"/>

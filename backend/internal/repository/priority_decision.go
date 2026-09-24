@@ -13,6 +13,7 @@ import (
 type PriorityDecisionRepository interface {
 	List(context.Context, dto.PageQuery) (Page[model.PriorityDecision], error)
 	Get(context.Context, uint) (model.PriorityDecision, error)
+	ListByStatus(context.Context, string) ([]model.PriorityDecision, error)
 	CreateWithRevision(context.Context, *model.PriorityDecision, *model.PriorityDecisionRevision) error
 	UpdateWithRevision(context.Context, uint, uint, *model.PriorityDecision, *model.PriorityDecisionRevision) error
 	Delete(context.Context, uint) error
@@ -55,6 +56,17 @@ func (r *priorityDecisionRepository) Get(ctx context.Context, id uint) (model.Pr
 		return tx.Order("version ASC")
 	}).First(&item, id).Error
 	return item, err
+}
+
+// ListByStatus returns every non-deleted record in the given status without
+// paging. The review queue ranks all draft decisions in the service layer so
+// ordering stays independent of the SQL dialect.
+func (r *priorityDecisionRepository) ListByStatus(ctx context.Context, status string) ([]model.PriorityDecision, error) {
+	items := make([]model.PriorityDecision, 0)
+	err := r.db.WithContext(ctx).
+		Where("status = ?", strings.TrimSpace(status)).
+		Order("id ASC").Find(&items).Error
+	return items, err
 }
 func (r *priorityDecisionRepository) CreateWithRevision(ctx context.Context, item *model.PriorityDecision, revision *model.PriorityDecisionRevision) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
